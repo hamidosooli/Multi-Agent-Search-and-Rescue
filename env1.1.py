@@ -109,7 +109,7 @@ def env(accuracy=1e-15):
         victims_idx = []
         for victim in victims:
             victims_idx.append(victim.id)
-
+        rescue_team_roles = np.array(rescue_team_roles, dtype=list)
         # eps += 1
 
         # Reset the agents flags, positions, etc
