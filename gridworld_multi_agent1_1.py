@@ -35,7 +35,7 @@ def draw_grid(scr):
             pg.draw.rect(scr, bg_color, rect, 1)
 
 
-def animate(rescue_team_traj, victims_traj, rescue_team_vfd, rescue_team_roles, wait_time):
+def animate(rescue_team_traj, victims_traj, rescue_team_vfd, rescue_team_vfd_status, rescue_team_roles, env_map, wait_time):
 
     font = pg.font.SysFont('arial', 20)
 
@@ -60,6 +60,9 @@ def animate(rescue_team_traj, victims_traj, rescue_team_vfd, rescue_team_roles, 
     img_victim = pg.image.load('victim.png')
     img_mdf_victim = pg.transform.scale(img_victim, (WIDTH // Col_num, HEIGHT // Row_num))
 
+    img_wall = pg.image.load('wall.png')
+    img_mdf_wall = pg.transform.scale(img_wall, (WIDTH // Col_num, HEIGHT // Row_num))
+
     bg.fill(bg_color)
     screen.blit(bg, (0, 0))
     clock = pg.time.Clock()
@@ -75,7 +78,14 @@ def animate(rescue_team_traj, victims_traj, rescue_team_vfd, rescue_team_roles, 
         list_rescue_team = np.arange(num_rescue_team).tolist()
 
         for rescue_team_stt, victims_stt in zip(np.moveaxis(rescue_team_traj, 0, -1),
-                                             np.moveaxis(victims_traj, 0, -1)):
+                                                np.moveaxis(victims_traj, 0, -1)):
+
+            for row in range(Row_num):
+                for col in range(Col_num):
+                    if env_map[row, col] == 1:
+                        screen.blit(img_mdf_wall,
+                                    (col * (WIDTH // Col_num),
+                                     row * (HEIGHT // Row_num)))
             step += 1
             for num in list_rescue_team:
                 if str(rescue_team_roles[num]) == "b'rs'":
@@ -86,13 +96,18 @@ def animate(rescue_team_traj, victims_traj, rescue_team_vfd, rescue_team_roles, 
                     vfd_color = vfds_color
 
                 # rescuer visual field depth
+                vfd_j = 0
                 for j in range(int(max(rescue_team_stt[1, num] - rescue_team_vfd[num], 0)),
-                               int(min(Row_num, rescue_team_stt[1, num] + rescue_team_vfd[num] + 1))):
+                               int(min(Col_num, rescue_team_stt[1, num] + rescue_team_vfd[num] + 1))):
+                    vfd_i = 0
                     for i in range(int(max(rescue_team_stt[0, num] - rescue_team_vfd[num], 0)),
-                                   int(min(Col_num, rescue_team_stt[0, num] + rescue_team_vfd[num] + 1))):
-                        rect = pg.Rect(j * (WIDTH // Col_num), i * (HEIGHT // Row_num),
-                                       (WIDTH // Col_num), (HEIGHT // Row_num))
-                        pg.draw.rect(screen, vfd_color, rect)
+                                   int(min(Row_num, rescue_team_stt[0, num] + rescue_team_vfd[num] + 1))):
+                        if rescue_team_vfd_status[num][step][vfd_i, vfd_j]:
+                            rect = pg.Rect(j * (WIDTH // Col_num), i * (HEIGHT // Row_num),
+                                           (WIDTH // Col_num), (HEIGHT // Row_num))
+                            pg.draw.rect(screen, vfd_color, rect)
+                        vfd_i += 1
+                    vfd_j += 1
 
             # agents
             for num in list_rescue_team:

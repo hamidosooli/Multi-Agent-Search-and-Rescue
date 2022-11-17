@@ -30,9 +30,16 @@ class Network:
 
         return np.subtract(victim_pos_array, rs_pos_array)
 
-    def is_seen(self, vfd_list, raw_sensation):
+    def is_seen(self, vfd_list, raw_sensation, vfd_status):
         vfd_mat = np.tile(vfd_list.reshape(self.num_agents, 1), (1, self.num_victims))
         condition = np.zeros_like(raw_sensation)
         condition[:, :, 0] = condition[:, :, 1] = vfd_mat
         tuple_cond = np.abs(raw_sensation) <= condition
-        return np.logical_and(tuple_cond[:, :, 0], tuple_cond[:, :, 1])
+        in_vfd = np.logical_and(tuple_cond[:, :, 0], tuple_cond[:, :, 1])
+        seen = np.zeros_like(in_vfd, dtype=bool)
+        for agent_id, first_cond in enumerate(in_vfd):
+            if first_cond:
+                if vfd_status[agent_id][int(vfd_list[agent_id] + raw_sensation[agent_id][0][0]),
+                                        int(vfd_list[agent_id] + raw_sensation[agent_id][0][1])]:
+                    seen[agent_id] = True
+        return seen

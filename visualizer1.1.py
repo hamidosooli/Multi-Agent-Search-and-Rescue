@@ -2,8 +2,28 @@ from gridworld_multi_agent1_1 import animate
 import numpy as np
 import matplotlib.pyplot as plt
 import h5py
-
-exp_name = '2R_NS'
+env_map = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                    [1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                    [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                    [1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0]])
+exp_name = '1R'
+# exp_name = '2R_NS'
 # exp_name = '2R_2S'
 # exp_name = '2R_2S_A2A'
 # exp_name = '2R_NS_1V'
@@ -12,11 +32,12 @@ exp_name = '2R_NS'
 # exp_name = '5R_5S'
 
 plt.rcParams.update({'font.size': 22})
-file_name = f'../h5py data/multi_agent_Q_learning_{exp_name}.hdf5'
+file_name = f'multi_agent_Q_learning_{exp_name}.hdf5'
 
 run_animate = True
 
 rescue_team_Traj = []
+rescue_team_VFD_status = []
 rescue_team_RewSum = []
 rescue_team_Steps = []
 rescue_team_RewSum_seen = []
@@ -29,6 +50,7 @@ with h5py.File(file_name, 'r') as f:
     for idx in range(len(f['RS_VFD'])):
 
         rescue_team_Traj.append(f[f'RS{idx}_trajectory'])
+        rescue_team_VFD_status.append(f[f'RS{idx}_VFD_status'])
         rescue_team_RewSum.append(f[f'RS{idx}_reward'])
         rescue_team_Steps.append(f[f'RS{idx}_steps'])
         rescue_team_RewSum_seen.append(f[f'RS{idx}_reward_seen'])
@@ -39,7 +61,7 @@ with h5py.File(file_name, 'r') as f:
 
     if run_animate:
         animate(np.asarray(rescue_team_Traj), np.asarray(victims_Traj),
-                np.asarray(f['RS_VFD']), f['RS_ROLES'], wait_time=0.5)
+                np.asarray(f['RS_VFD']), np.asarray(rescue_team_VFD_status), f['RS_ROLES'], env_map, wait_time=0.5)
 
     rescue_team_legends = []
 

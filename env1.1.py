@@ -2,13 +2,14 @@ import time
 
 import numpy as np
 import h5py
+import json
 
 from action_selection import eps_greedy
 from network import Network
 from agent import Agent
 
 
-NUM_EPISODES = 2000
+NUM_EPISODES = 1
 NUM_RUNS = 100
 Multi_Runs = False
 # Actions
@@ -25,14 +26,49 @@ Col_num = 20
 row_lim = Row_num - 1
 col_lim = Col_num - 1
 
-#                          r1  r2  s3  s4
-adj_mat_prior = np.array([[0,  0],
-                          [0,  0]], dtype=float)
-exp_name = '2R_NS'
+#                          r1
+adj_mat_prior = np.array([[0]], dtype=float)
+exp_name = '1R'
 
+# make the map from json file
+# with open('data10.json') as f:
+#     data = json.load(f)
+#     test = data['map'][0]
+#     dim = data['dimensions']
+#     rows = dim[0]['rows']
+#     columns = dim[0]['columns']
+#
+#     env_map = np.zeros((rows, columns))
+#
+#     for cell in data['map']:
+#         if cell['isWall'] == 'true':
+#             env_map[cell['x'], cell['y']] = 1
 
-# Transition function
+env_mat = np.zeros((Row_num, Col_num))
+global env_map
+env_map = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                    [1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                    [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                    [1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0]])
+# Transition function (avoid walls)
 def movement(pos, action, speed):
+    global env_map
     row = pos[0]
     col = pos[1]
     next_pos = pos.copy()
@@ -44,8 +80,10 @@ def movement(pos, action, speed):
         next_pos = [row, min(col + speed, col_lim)]
     elif action == 3:  # left
         next_pos = [row, max(col - speed, 0)]
-
-    return next_pos
+    if env_map[next_pos[0], next_pos[1]] == 0:
+        return next_pos
+    else:
+        return pos
 
 
 def reward_func(sensation_prime):
@@ -69,28 +107,31 @@ def env(accuracy=1e-15):
 
     # Define the rescue team
     r1 = agent(0, 'r', 3, 3, 1, [np.random.choice(range(Row_num)), np.random.choice(range(Col_num))], num_Acts, Row_num, Col_num)
-    r2 = agent(1, 'r', 3, 3, 1, [np.random.choice(range(Row_num)), np.random.choice(range(Col_num))], num_Acts, Row_num, Col_num)
+    # r2 = agent(1, 'r', 3, 3, 1, [np.random.choice(range(Row_num)), np.random.choice(range(Col_num))], num_Acts, Row_num, Col_num)
     # s3 = agent(2, 's', 4, 4, 1, [row_lim, 0], num_Acts, Row_num, Col_num)
     # s4 = agent(3, 's', 4, 4, 1, [0, col_lim], num_Acts, Row_num, Col_num)
     # rs5 = agent(4, 'r', 4, Row_num, 1, [row_lim, col_lim], num_Acts, Row_num, Col_num)
 
     # Define the victims
     v1 = agent(0, 'v', 0, 0, 1, [int(Row_num / 2) - 2, int(Col_num / 2) - 2], num_Acts, Row_num, Col_num)
-    v2 = agent(1, 'v', 0, 0, 1, [int(Row_num / 2) + 2, int(Col_num / 2) + 2], num_Acts, Row_num, Col_num)
+    # v2 = agent(1, 'v', 0, 0, 1, [int(Row_num / 2) + 2, int(Col_num / 2) + 2], num_Acts, Row_num, Col_num)
     # v3 = agent(2, 'v', 0, 0, 1, [int(Row_num / 2) - 2, int(Col_num / 2) - 2], num_Acts, Row_num, Col_num)
     # v4 = agent(3, 'v', 0, 0, 1, [int(Row_num / 2) + 4, int(Col_num / 2) + 4], num_Acts, Row_num, Col_num)
     # v5 = agent(4, 'v', 0, 0, 1, [int(Row_num / 2) - 4, int(Col_num / 2) - 4], num_Acts, Row_num, Col_num)
 
     # List of objects
-    rescue_team = [r1, r2]
-    victims = [v1, v2]
+    rescue_team = [r1]
+    victims = [v1]
     VFD_list = []
+
     num_just_scouts = 0
     rescue_team_roles = []
+    VFD_status = []
     for agent in rescue_team:
         rescue_team_roles.append(agent.Role)
         # List of the Visual Fields
         VFD_list.append(agent.VisualField)
+
         # Count the number of just scouts
         if agent.Role == 's':
             num_just_scouts += 1
@@ -130,6 +171,7 @@ def env(accuracy=1e-15):
             t_step += 1
 
             rescue_team_VFD_list = []
+
             for agent in rescue_team_Hist:
                 # List of the Visual Fields
                 rescue_team_VFD_list.append(agent.VisualField)
@@ -140,6 +182,12 @@ def env(accuracy=1e-15):
 
                 # Keeping track of the rescue team positions
                 agent.Traj.append(agent.old_Pos)
+
+                # Update VFD status
+                agent.vfd_update(env_map)
+
+                # Keep track of VFD status for the team
+                VFD_status.append(agent.vfd_status)
 
                 # History of Q
                 agent.Q_hist = agent.Q.copy()
@@ -167,10 +215,11 @@ def env(accuracy=1e-15):
             old_raw_sensations = net.sensed_pos(victims_old_pos_list, rescue_team_old_pos_list)
 
             # Check to see if the sensations are in the agents visual fields
-            eval_old_sensations = net.is_seen(rescue_team_VFD_list, old_raw_sensations)
+            eval_old_sensations = net.is_seen(rescue_team_VFD_list, old_raw_sensations, VFD_status)
 
             rescue_team_curr_pos_list = []
             rescue_team_role_list = []
+            VFD_status_list = []
             for agent in rescue_team_Hist:
                 # Calculation of the sensations for the rescue team
                 agent.old_Sensation = agent.update_sensation(rescue_team_Hist.index(agent),
@@ -187,13 +236,17 @@ def env(accuracy=1e-15):
 
                 # Smart move algorithm
                 # agent.smart_move(agent.old_Pos, agent.old_Index, agent.wereHere)
-                agent.random_walk(agent.old_Index, agent.old_Pos, agent.Speed)
+                # agent.random_walk(agent.old_Index, agent.old_Pos, agent.Speed)
+                agent.ant_colony_move(env_mat, agent.old_Index, env_map)
 
                 # List of the current positions for the rescue team members
                 rescue_team_curr_pos_list.append(agent.curr_Pos)
 
                 # List of the roles for the rescue team members
                 rescue_team_role_list.append(agent.Role)
+
+                # List of the VFD status
+                VFD_status_list.append(VFD_status)
 
             rescue_team_curr_pos_list = np.asarray(rescue_team_curr_pos_list)
 
@@ -204,7 +257,7 @@ def env(accuracy=1e-15):
             curr_raw_sensations = net.sensed_pos(victims_old_pos_list, rescue_team_curr_pos_list)
 
             # Check to see if the sensations are in the agents visual fields
-            eval_curr_sensations = net.is_seen(rescue_team_VFD_list, curr_raw_sensations)
+            eval_curr_sensations = net.is_seen(rescue_team_VFD_list, curr_raw_sensations, VFD_status)
 
             # Calculation of the new sensations for the rescue team (after their movement)
             for agent in rescue_team_Hist:
@@ -277,6 +330,7 @@ def env(accuracy=1e-15):
         for victim in victims:
             if agent.curr_Pos[0] == victim.old_Pos[0] and agent.curr_Pos[1] == victim.old_Pos[1]:
                 agent.Traj.append(agent.curr_Pos)
+                VFD_status.append(agent.vfd_status)
 
     rescue_team_Traj = []
     rescue_team_RewSum = []
@@ -307,7 +361,7 @@ def env(accuracy=1e-15):
     return (rescue_team_Traj,
             rescue_team_RewSum, rescue_team_Steps,
             rescue_team_RewSum_seen, rescue_team_Steps_seen,
-            rescue_team_Q, victims_Traj, VFD_list, rescue_team_roles)
+            rescue_team_Q, victims_Traj, VFD_list, VFD_status_list, rescue_team_roles)
 
 
 if Multi_Runs:
@@ -321,7 +375,7 @@ if Multi_Runs:
         (rescue_team_Traj,
          rescue_team_RewSum, rescue_team_Steps,
          rescue_team_RewSum_seen, rescue_team_Steps_seen,
-         rescue_team_Q, victims_Traj, VFD_list, rescue_team_roles) = env(accuracy=1e-7)
+         rescue_team_Q, victims_Traj, VFD_list, VFD_status_list, rescue_team_roles) = env(accuracy=1e-7)
 
         rescue_team_RewSum_Run.append(list(filter(None, rescue_team_RewSum)))
         rescue_team_Steps_Run.append(list(filter(None, rescue_team_Steps)))
@@ -349,11 +403,13 @@ else:
     (rescue_team_Traj,
      rescue_team_RewSum, rescue_team_Steps,
      rescue_team_RewSum_seen, rescue_team_Steps_seen,
-     rescue_team_Q, victims_Traj, VFD_list, rescue_team_roles) = env(accuracy=1e-7)
+     rescue_team_Q, victims_Traj, VFD_list, VFD_status_list, rescue_team_roles) = env(accuracy=1e-7)
 
     with h5py.File(f'multi_agent_Q_learning_{exp_name}.hdf5', 'w') as f:
         for idx, traj in enumerate(rescue_team_Traj):
             f.create_dataset(f'RS{idx}_trajectory', data=traj)
+        for idx, vfd_sts in enumerate(VFD_status_list):
+            f.create_dataset(f'RS{idx}_VFD_status', data=vfd_sts)
         for idx, rew_sum in enumerate(rescue_team_RewSum):
             f.create_dataset(f'RS{idx}_reward', data=rew_sum)
         for idx, steps in enumerate(rescue_team_Steps):

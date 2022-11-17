@@ -7,6 +7,7 @@ class Agent:
         self.id = agent_id  # an identification for the agent
         self.VisualField = vfd
         self.max_VisualField = max_vfd
+        self.vfd_status = np.ones((2 * self.VisualField + 1, 2 * self.VisualField + 1), dtype=bool)
 
         self.curr_Sensation = [np.nan, np.nan]
         self.old_Sensation = self.curr_Sensation
@@ -57,6 +58,42 @@ class Agent:
         self.RewHist_seen = []
         self.Traj = []
         self.wereHere = np.ones_like(self.wereHere)
+        self.vfd_status = np.ones((2 * self.VisualField + 1, 2 * self.VisualField + 1), dtype=bool)
+
+    def vfd_update(self, env_map):
+        # rescuer visual field depth
+        self.vfd_status = np.ones((2 * self.VisualField + 1, 2 * self.VisualField + 1), dtype=bool)
+        vfd_j = 0
+        for j in range(int(max(self.old_Pos[1] - self.VisualField, 0)),
+                       int(min(self.num_cols, self.old_Pos[1] + self.VisualField + 1))):
+            vfd_i = 0
+            for i in range(int(max(self.old_Pos[0] - self.VisualField, 0)),
+                           int(min(self.num_rows, self.old_Pos[0] + self.VisualField + 1))):
+                if env_map[i, j] == 1:
+                    self.vfd_status[vfd_i, vfd_j] = False
+                    # Down or Up
+                    if i - self.old_Pos[0] > 0 and j - self.old_Pos[1] == 0:
+                        self.vfd_status[vfd_i:, vfd_j] = False
+                    elif i - self.old_Pos[0] < 0 and j - self.old_Pos[1] == 0:
+                        self.vfd_status[:min(vfd_i+1, self.VisualField), vfd_j] = False
+                    # Right or Left
+                    elif i - self.old_Pos[0] == 0 and j - self.old_Pos[1] > 0:
+                        self.vfd_status[vfd_i, vfd_j:] = False
+                    elif i - self.old_Pos[0] == 0 and j - self.old_Pos[1] < 0:
+                        self.vfd_status[vfd_i, :min(vfd_j+1, self.VisualField)] = False
+                    # Northeast or Northwest
+                    elif i - self.old_Pos[0] < 0 and j - self.old_Pos[1] > 0:
+                        self.vfd_status[:min(vfd_i+1, self.VisualField), vfd_j:] = False
+                    elif i - self.old_Pos[0] < 0 and j - self.old_Pos[1] < 0:
+                        self.vfd_status[:min(vfd_i+1, self.VisualField), :min(vfd_j+1, self.VisualField)] = False
+                    # Southeast or Southwest
+                    elif i - self.old_Pos[0] > 0 and j - self.old_Pos[1] > 0:
+                        self.vfd_status[vfd_i:, vfd_j:] = False
+                    elif i - self.old_Pos[0] > 0 and j - self.old_Pos[1] < 0:
+                        self.vfd_status[vfd_i:, :min(vfd_j+1, self.VisualField)] = False
+
+                vfd_i += 1
+            vfd_j += 1
 
     def smart_move(self, idx, wereHere):
 
