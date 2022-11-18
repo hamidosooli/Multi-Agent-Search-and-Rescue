@@ -25,6 +25,7 @@ class Network:
         rs_pos_array[:, :, 1] = np.tile(rs_pos_list[:, 1].reshape(self.num_agents, 1), (1, self.num_victims))
 
         victim_pos_array = np.empty((self.num_agents, self.num_victims, 2))
+
         victim_pos_array[:, :, 0] = np.tile(victim_pos_list[:, 0].reshape(1, self.num_victims), (self.num_agents, 1))
         victim_pos_array[:, :, 1] = np.tile(victim_pos_list[:, 1].reshape(1, self.num_victims), (self.num_agents, 1))
 
@@ -32,14 +33,18 @@ class Network:
 
     def is_seen(self, vfd_list, raw_sensation, vfd_status):
         vfd_mat = np.tile(vfd_list.reshape(self.num_agents, 1), (1, self.num_victims))
-        condition = np.zeros_like(raw_sensation)
-        condition[:, :, 0] = condition[:, :, 1] = vfd_mat
-        tuple_cond = np.abs(raw_sensation) <= condition
+        in_vfd_condition = np.zeros_like(raw_sensation)
+        in_vfd_condition[:, :, 0] = in_vfd_condition[:, :, 1] = vfd_mat
+        tuple_cond = np.abs(raw_sensation) <= in_vfd_condition
         in_vfd = np.logical_and(tuple_cond[:, :, 0], tuple_cond[:, :, 1])
-        seen = np.zeros_like(in_vfd, dtype=bool)
-        for agent_id, first_cond in enumerate(in_vfd):
-            if first_cond:
-                if vfd_status[agent_id][int(vfd_list[agent_id] + raw_sensation[agent_id][0][0]),
-                                        int(vfd_list[agent_id] + raw_sensation[agent_id][0][1])]:
-                    seen[agent_id] = True
-        return seen
+
+        idx_vfd_status = in_vfd_condition + raw_sensation
+
+        vfd_status_condition = in_vfd.copy()
+        for agent_id in range(len(vfd_list)):
+            for victim_id, first_cond in enumerate(in_vfd[agent_id]):
+                if first_cond:
+                    if vfd_status[agent_id][int(idx_vfd_status[agent_id, victim_id][0]),
+                                            int(idx_vfd_status[agent_id, victim_id][1])]:
+                        vfd_status_condition[agent_id, victim_id] = True
+        return vfd_status_condition

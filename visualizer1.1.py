@@ -50,7 +50,7 @@ with h5py.File(file_name, 'r') as f:
     for idx in range(len(f['RS_VFD'])):
 
         rescue_team_Traj.append(f[f'RS{idx}_trajectory'])
-        rescue_team_VFD_status.append(f[f'RS{idx}_VFD_status'])
+        rescue_team_VFD_status.append(np.asarray(f[f'RS{idx}_VFD_status']))
         rescue_team_RewSum.append(f[f'RS{idx}_reward'])
         rescue_team_Steps.append(f[f'RS{idx}_steps'])
         rescue_team_RewSum_seen.append(f[f'RS{idx}_reward_seen'])
@@ -61,7 +61,7 @@ with h5py.File(file_name, 'r') as f:
 
     if run_animate:
         animate(np.asarray(rescue_team_Traj), np.asarray(victims_Traj),
-                np.asarray(f['RS_VFD']), np.asarray(rescue_team_VFD_status), f['RS_ROLES'], env_map, wait_time=0.5)
+                np.asarray(f['RS_VFD']), rescue_team_VFD_status, f['RS_ROLES'], env_map, wait_time=0.5)
 
     rescue_team_legends = []
 
