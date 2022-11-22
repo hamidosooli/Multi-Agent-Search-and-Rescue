@@ -8,7 +8,7 @@ from action_selection import eps_greedy
 from network import Network
 from agent import Agent
 
-NUM_EPISODES = 1
+NUM_EPISODES = 500
 NUM_RUNS = 100
 Multi_Runs = False
 # Actions
@@ -28,7 +28,7 @@ col_lim = Col_num - 1
 #                          r1 r2
 adj_mat_prior = np.array([[0, 0],
                           [0, 0]], dtype=float)
-exp_name = '1R'
+exp_name = '2R_'
 
 # make the map from json file
 # with open('data10.json') as f:
@@ -66,6 +66,7 @@ env_map = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0]
                     [1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
                     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0]])
+# env_map=np.zeros((20, 20))
 # Transition function (avoid walls)
 def movement(pos, action, speed):
     global env_map
@@ -242,11 +243,11 @@ def env(accuracy=1e-15):
                 # Next positions for the rescue team
                 agent.curr_Pos = movement(agent.old_Pos, agent.action, agent.Speed)
 
-                # Smart move algorithm
-                # sa.smart_move(agent.old_Pos, agent.old_Index, agent.wereHere)
-                # sa.random_walk(agent.old_Index, agent.old_Pos, agent.Speed)
+                # Search algorithm
+                # agent.straight_move(agent.old_Index, agent.wereHere, env_map)
+                # agent.random_walk(agent.old_Index, agent.old_Pos, agent.Speed, env_map)
                 agent.ant_colony_move(env_mat, agent.old_Index, env_map)
-
+                # agent.levy_walk(env_map)
                 # List of the current positions for the rescue team members
                 rescue_team_curr_pos_list.append(agent.curr_Pos)
 
