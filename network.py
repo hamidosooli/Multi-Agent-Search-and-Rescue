@@ -40,11 +40,10 @@ class Network:
 
         idx_vfd_status = in_vfd_condition + raw_sensation
 
-        vfd_status_condition = in_vfd.copy()
+        vfd_status_condition = np.zeros_like(in_vfd, dtype=bool)
         for agent_id in range(len(vfd_list)):
             for victim_id, first_cond in enumerate(in_vfd[agent_id]):
-                if first_cond:
-                    if vfd_status[agent_id][int(idx_vfd_status[agent_id, victim_id][0]),
-                                            int(idx_vfd_status[agent_id, victim_id][1])]:
+                if first_cond and vfd_status[agent_id][int(idx_vfd_status[agent_id, victim_id][0]),
+                                                       int(idx_vfd_status[agent_id, victim_id][1])]:
                         vfd_status_condition[agent_id, victim_id] = True
         return vfd_status_condition
