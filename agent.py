@@ -173,9 +173,5 @@ class Agent(SearchAlgorithms):
         return victims_Hist
 
     def convergence_check(self, accuracy):
-
-        if (np.abs(np.sum(self.Q - self.Q_hist) /
-                   (np.shape(self.Q)[0] * np.shape(self.Q)[1])) <= accuracy):
-            self.Convergence = True
-
+        self.Convergence = np.allclose(self.Q, self.Q_hist, atol=accuracy)
         return self.Convergence
