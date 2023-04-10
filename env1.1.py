@@ -8,7 +8,7 @@ from action_selection import eps_greedy
 from network import Network
 from agent import Agent
 
-NUM_EPISODES = 500
+NUM_EPISODES = 1
 NUM_RUNS = 100
 Multi_Runs = False
 # Actions
@@ -28,7 +28,7 @@ col_lim = Col_num - 1
 #                          r1 r2
 adj_mat_prior = np.array([[0, 0],
                           [0, 0]], dtype=float)
-exp_name = '2R_'
+exp_name = '2R_1episode'
 
 # make the map from json file
 # with open('data10.json') as f:
@@ -68,7 +68,7 @@ env_map = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0]
                     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0]])
 # env_map=np.zeros((20, 20))
 # Transition function (avoid walls)
-def movement(pos, action, speed):
+def movement(pos, old_poses, next_poses, action, speed):
     global env_map
     row = pos[0]
     col = pos[1]
@@ -81,7 +81,12 @@ def movement(pos, action, speed):
         next_pos = [row, min(col + speed, col_lim)]
     elif action == 3:  # left
         next_pos = [row, max(col - speed, 0)]
-    if env_map[next_pos[0], next_pos[1]] == 0:
+
+    obstacle_check = env_map[next_pos[0], next_pos[1]] == 0
+    old_occupied_check = not(next_pos[0] in old_poses[:, 0] and next_pos[1] in old_poses[:, 1])
+    next_occupied_check = not (next_pos[0] in next_poses[:, 0] and next_pos[1] in next_poses[:, 1])
+
+    if obstacle_check and old_occupied_check and next_occupied_check:
         return next_pos
     else:
         return pos
@@ -239,15 +244,6 @@ def env(accuracy=1e-15):
 
                 # Actions for the rescue team
                 agent.action = eps_greedy(agent.Q[agent.old_Index, :], ACTIONS)
-
-                # Next positions for the rescue team
-                agent.curr_Pos = movement(agent.old_Pos, agent.action, agent.Speed)
-
-                # Search algorithm
-                # agent.straight_move(agent.old_Index, agent.wereHere, env_map)
-                # agent.random_walk(agent.old_Index, agent.old_Pos, agent.Speed, env_map)
-                agent.ant_colony_move(env_mat, agent.old_Index, env_map)
-                # agent.levy_walk(env_map)
                 # List of the current positions for the rescue team members
                 rescue_team_curr_pos_list.append(agent.curr_Pos)
 
@@ -255,7 +251,15 @@ def env(accuracy=1e-15):
                 rescue_team_role_list.append(agent.Role)
 
             rescue_team_curr_pos_list = np.asarray(rescue_team_curr_pos_list)
+            for agent in rescue_team_Hist:
+                # Next positions for the rescue team
+                agent.curr_Pos = movement(agent.old_Pos, rescue_team_old_pos_list, rescue_team_curr_pos_list, agent.action, agent.Speed)
 
+                # Search algorithm
+                # agent.straight_move(agent.old_Index, agent.wereHere, env_map)
+                # agent.random_walk(agent.old_Index, agent.old_Pos, agent.Speed, env_map)
+                agent.ant_colony_move(env_mat, agent.old_Index, env_map)
+                # agent.levy_walk(env_map)
             # Calculation of the distance between agents (after their movement)
             curr_scouts2rescuers = net.pos2pos(rescue_team_curr_pos_list)
 
@@ -314,16 +318,19 @@ def env(accuracy=1e-15):
             # Update the rescue team positions
             for agent in rescue_team_Hist:
                 agent.old_Pos = agent.curr_Pos
-
+            victims_curr_pos_list = []
             # Victims' actions and positions
             for victim in victims_Hist:
                 # Actions for the victims
                 victim.action = np.random.choice(ACTIONS)
                 # Victims next positions
-                victim.curr_Pos = movement(victim.old_Pos, victim.action, victim.Speed)
+                victims_curr_pos_list.append(victim.curr_Pos)
                 # Update the victims position
                 victim.old_Pos = victim.curr_Pos
-
+            victims_curr_pos_list = np.asarray(victims_curr_pos_list)
+            for victim in victims_Hist:
+                victim.curr_Pos = movement(victim.old_Pos, victims_old_pos_list, victims_curr_pos_list, victim.action,
+                                           victim.Speed)
         # Check for the proper number of episodes
         # convergence_flag = []
         # for agent in rescue_team:
