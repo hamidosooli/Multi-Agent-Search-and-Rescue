@@ -8,6 +8,7 @@ class Network:
         self.num_agents = num_agents
         self.num_victims = num_victims
 
+
     def pos2pos(self, pos_list):
 
         pos_array = np.empty((self.num_agents, self.num_agents, 2))

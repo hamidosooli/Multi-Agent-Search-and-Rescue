@@ -34,12 +34,14 @@ class SearchAlgorithms:
         self.path_to_take = None
         self.path_taken_counter = 0
 
-    def straight_move(self, idx, were_here, env_map):
+        self.last_index = 2 * ((2 * max_vfd - 1) * (2 * max_vfd + 1) + (2 * max_vfd - 1)) + 1
+
+    def straight_move(self, idx, were_here, env_map, busy_agent):
         """
         takes index to see if the agent is in search mode
         wereHere is a matrix that tracks the visited cells
         """
-        if idx == (2 * self.max_VisualField + 1) ** 2:
+        if idx == self.last_index and not busy_agent:
             if len(np.argwhere(were_here)) > 0:
                 for loc in np.argwhere(were_here):
                     if np.sqrt((loc[0] - self.old_Pos[0]) ** 2 + (loc[1] - self.old_Pos[1]) ** 2) == 1:
@@ -52,7 +54,7 @@ class SearchAlgorithms:
                     else:
                         continue
 
-    def random_walk(self, idx, pos, speed, env_map):
+    def random_walk(self, idx, pos, speed, env_map, busy_agent):
         """
         takes current location and its relevant index in the Q table
         as well as agents speed
@@ -63,7 +65,9 @@ class SearchAlgorithms:
         col_lim = self.num_cols - 1
         row = pos[0]
         col = pos[1]
-        if idx == (2 * self.max_VisualField + 1) ** 2:
+        if busy_agent:
+            pass
+        elif idx == self.last_index:
             self.action = np.random.randint(self.num_actions)
 
             if self.action == 0:  # up
@@ -113,13 +117,13 @@ class SearchAlgorithms:
                 min_visited_locations.append(loc)
         return min_visited_locations
 
-    def ant_colony_move(self, cells_visited, idx, env_map):
+    def ant_colony_move(self, cells_visited, idx, env_map, busy_agent):
         """ takes a 2D array representing the visit count for cells in the grid world
             and increments the current agents position toward the least visited neighboring cell
         """
         # increment the cell visit number
         cells_visited[self.old_Pos[0], self.old_Pos[1]] += 1
-        if idx == (2 * self.max_VisualField + 1) ** 2:
+        if idx == self.last_index and not busy_agent:
             nearby_location_visits = self.get_nearby_location_visits(cells_visited)
             least_visited_locations = self.get_minimum_visited_cells(nearby_location_visits)
             # select a random location from the least visit locations nearby
@@ -152,7 +156,7 @@ class SearchAlgorithms:
 
         return actions
 
-    def levy_walk(self, env_map):
+    def levy_walk(self, env_map, busy_agent):
         """
         Randomly gets next step based on set of actions.
         Boundary conditions are reflective

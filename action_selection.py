@@ -1,13 +1,18 @@
 import numpy as np
 
 
+def softmax(h_b):
+    z = h_b - np.max(h_b)
+    return np.exp(z) / np.sum(np.exp(z))
+
+
 def greedy(q):
     return np.random.choice(np.flatnonzero(q == np.max(q)))
 
 
-def eps_greedy(q, actions, epsilon=0.05):
+def eps_greedy(q, num_actions, epsilon=0.05):
     if np.random.random() < epsilon:
-        idx = np.random.randint(len(actions))
+        idx = np.random.randint(num_actions)
     else:
         idx = greedy(q)
     return idx
