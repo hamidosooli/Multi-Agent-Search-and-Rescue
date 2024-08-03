@@ -1,6 +1,6 @@
 from scipy.stats import wrapcauchy, levy_stable
 import numpy as np
-
+import torch
 
 class SearchAlgorithms:
     def __init__(self, max_vfd, init_pos, num_actions, num_rows, num_cols):
@@ -9,8 +9,8 @@ class SearchAlgorithms:
         self.wereHere = np.ones((num_rows, num_cols))
 
         self.init_pos = init_pos
-        self.curr_Pos = self.init_pos
-        self.old_Pos = self.curr_Pos
+        self.curr_pos = self.init_pos
+        self.old_pos = self.curr_pos
 
         self.num_actions = num_actions
         self.num_rows = num_rows
@@ -36,6 +36,34 @@ class SearchAlgorithms:
 
         self.last_index = 2 * ((2 * max_vfd - 1) * (2 * max_vfd + 1) + (2 * max_vfd - 1)) + 1
 
+    def random_walk(self, idx, pos, speed, env_map, busy_agent, device):
+        """
+        takes current location and its relevant index in the Q table
+        as well as agents speed
+        If the index is for the search mode,
+         it randomly selects one of the 4 possible directions
+         """
+        if idx != self.last_index or busy_agent:
+            return
+        row_lim = self.num_rows - 1
+        col_lim = self.num_cols - 1
+        row = pos[0]
+        col = pos[1]
+
+        self.action = torch.tensor([[np.random.randint(self.num_actions)]], device=device, dtype=torch.long)
+
+        if self.action.item() == 0:  # up
+            next_loc = [max(row - speed, 0), col]
+        elif self.action.item() == 1:  # down
+            next_loc = [min(row + speed, row_lim), col]
+        elif self.action.item() == 2:  # right
+            next_loc = [row, min(col + speed, col_lim)]
+        elif self.action.item() == 3:  # left
+            next_loc = [row, max(col - speed, 0)]
+
+        if env_map[next_loc[0], next_loc[1]] == 0:
+            self.curr_pos = next_loc
+
     def straight_move(self, idx, were_here, env_map, busy_agent):
         """
         takes index to see if the agent is in search mode
@@ -44,97 +72,21 @@ class SearchAlgorithms:
         if idx == self.last_index and not busy_agent:
             if len(np.argwhere(were_here)) > 0:
                 for loc in np.argwhere(were_here):
-                    if np.sqrt((loc[0] - self.old_Pos[0]) ** 2 + (loc[1] - self.old_Pos[1]) ** 2) == 1:
+                    if np.sqrt((loc[0] - self.old_pos[0]) ** 2 + (loc[1] - self.old_pos[1]) ** 2) == 1:
                         next_loc = loc
-                        self.wereHere[self.curr_Pos[0], self.curr_Pos[1]] = 0
+                        self.wereHere[self.curr_pos[0], self.curr_pos[1]] = 0
 
                         if env_map[next_loc[0], next_loc[1]] == 0:
-                            self.curr_Pos = next_loc
+                            self.curr_pos = next_loc
                         break
                     else:
                         continue
-
-    def random_walk(self, idx, pos, speed, env_map, busy_agent):
-        """
-        takes current location and its relevant index in the Q table
-        as well as agents speed
-        If the index is for the search mode,
-         it randomly selects one of the 4 possible directions
-         """
-        row_lim = self.num_rows - 1
-        col_lim = self.num_cols - 1
-        row = pos[0]
-        col = pos[1]
-        if busy_agent:
-            pass
-        elif idx == self.last_index:
-            self.action = np.random.randint(self.num_actions)
-
-            if self.action == 0:  # up
-                next_loc = [max(row - speed, 0), col]
-            elif self.action == 1:  # down
-                next_loc = [min(row + speed, row_lim), col]
-            elif self.action == 2:  # right
-                next_loc = [row, min(col + speed, col_lim)]
-            elif self.action == 3:  # left
-                next_loc = [row, max(col - speed, 0)]
-
-            if env_map[next_loc[0], next_loc[1]] == 0:
-                self.curr_Pos = next_loc
-
-    # The following three methods were developed by Mohamed Martini
-    def get_nearby_location_visits(self, grid_cells):
-        """ takes the grid of cells (represented by a 2D numpy array)
-            returns a  of the locations (as x,y tuples) which are 1 unit away
-            (ie: is UP, DOWN, LEFT, RIGHT of current agent position) together with their
-            visit count which is an integer representing the number of times the cell has been visited
-        """
-        nearby_cell_visits = list()
-        for row in range(0, len(grid_cells)):
-            for col in range(0, len(grid_cells[row, :])):
-                visit_num = grid_cells[row, col]
-                loc = [row, col]
-                if np.linalg.norm(np.subtract(loc, self.old_Pos)) == 1:
-                    loc_visits = [loc, visit_num]
-                    nearby_cell_visits.append(loc_visits)
-        return nearby_cell_visits
-
-    def get_minimum_visited_cells(self, location_visits):
-        """ takes a list of tuples whose elements represent locations in the grid world together
-            with their visit counts and returns an array of locations which have the minimum number
-            of visits
-        """
-        min_visits = np.inf  # or any very large number (greater than any expected visit count)
-        min_visited_locations = []
-        # find the minimum visited number for cells corresponding with the passed locations
-        for loc_visits in location_visits:
-            times_visited = loc_visits[1]
-            if times_visited < min_visits:
-                min_visits = times_visited
-        # filter the locations corresponding with this minimum visit number
-        for loc in location_visits:
-            if loc[1] == min_visits:
-                min_visited_locations.append(loc)
-        return min_visited_locations
-
-    def ant_colony_move(self, cells_visited, idx, env_map, busy_agent):
-        """ takes a 2D array representing the visit count for cells in the grid world
-            and increments the current agents position toward the least visited neighboring cell
-        """
-        # increment the cell visit number
-        cells_visited[self.old_Pos[0], self.old_Pos[1]] += 1
-        if idx == self.last_index and not busy_agent:
-            nearby_location_visits = self.get_nearby_location_visits(cells_visited)
-            least_visited_locations = self.get_minimum_visited_cells(nearby_location_visits)
-            # select a random location from the least visit locations nearby
-            next_loc_ind = np.random.randint(0, len(least_visited_locations))
-            next_loc = least_visited_locations[next_loc_ind][0]
-            if env_map[next_loc[0], next_loc[1]] == 0:
-                self.curr_Pos = next_loc
+            else:
+                self.wereHere = np.ones_like(self.wereHere)
 
     # The following method was developed by Fernando Mazzoni
     def account_for_boundary(self):
-        row, col = self.curr_Pos
+        row, col = self.curr_pos
         actions = self.actions.copy()
 
         if row == 0:
@@ -161,6 +113,8 @@ class SearchAlgorithms:
         Randomly gets next step based on set of actions.
         Boundary conditions are reflective
         """
+        if busy_agent:
+            return
         prev_action = self.prev_action
 
         # Levy Walk each decision step continues otherwise repeat last action
@@ -206,9 +160,69 @@ class SearchAlgorithms:
                                  if x == desired_action else x for x in self.path_to_take]
 
             action = [int(desired_action[0]*-1), int(desired_action[1]*-1)]
-
-        next_loc = [self.curr_Pos[0] + action[0], self.curr_Pos[1] + action[1]]
+        row, col = np.shape(env_map)
+        next_loc = [min(max(self.curr_pos[0] + action[0], 0), row-1), min(max(self.curr_pos[1] + action[1], 0), col-1)]
         self.prev_action = action
         if env_map[next_loc[0], next_loc[1]] == 0:
-            self.curr_Pos = next_loc
+            self.curr_pos = next_loc
 
+    def ant_colony(self, cells_visited, idx, env_map, busy_agent, num_acts=4, break_ties=True):
+        if idx != self.last_index or busy_agent:
+            return cells_visited
+
+        x, y = np.add(self.old_pos, [1, 1])
+
+        # boundaries
+        left = y-1
+        right = y+1
+        top = x-1
+        down = x+1
+        env_map_copy = env_map.astype(float)
+        env_map_copy[env_map_copy == 1] = np.nan
+        env_map_copy = np.pad(env_map_copy, 1, mode='constant', constant_values=np.nan)
+        decision_map = cells_visited[top:down+1, left:right+1] + env_map_copy[top:down+1, left:right+1]
+        decision_map_shape = np.shape(decision_map)
+        # actions
+        stay = [0, 0]
+        go_right = [0, 1]
+        go_left = [0, -1]
+        go_up = [-1, 0]
+        go_down = [1, 0]
+
+        go_northeast = [-1, 1]
+        go_northwest = [-1, -1]
+        go_southeast = [1, 1]
+        go_southwest = [1, -1]
+        actions_map = np.array([[go_northwest, go_up, go_northeast],
+                                [go_left, stay, go_right],
+                                [go_southwest, go_down, go_southeast]])
+
+        ignore_pattern = np.array([[np.nan, 0, np.nan],
+                                   [0, np.nan, 0],
+                                   [np.nan, 0, np.nan]])
+        if num_acts == 8:
+            pass
+        elif num_acts == 4:
+            decision_map = np.add(decision_map, ignore_pattern)
+        else:
+            raise ValueError('Numer of actions must be 4 or 8.')
+        decision_map_min_values = np.nanmin(decision_map)
+
+        # use the following to break the ties between min values
+        if break_ties:
+            min_visit_flat_index = np.random.choice(np.flatnonzero(decision_map == decision_map_min_values))
+            min_visit_index = np.unravel_index(min_visit_flat_index, decision_map_shape)
+        else:
+            min_visit_flat_index = np.flatnonzero(decision_map == decision_map_min_values)
+            min_visit_index = np.unravel_index(min_visit_flat_index[0], decision_map_shape)
+
+        action = actions_map[min_visit_index[0], min_visit_index[1]]
+        next_pos = np.add(self.old_pos, action)
+
+        if env_map[next_pos[0], next_pos[1]] == 0:
+            cells_visited[next_pos[0]+1, next_pos[1]+1] += 1
+            self.curr_pos = next_pos
+        else:
+            cells_visited[self.old_pos[0]+1, self.old_pos[1]+1] += 1
+            self.curr_pos = self.old_pos
+        return cells_visited

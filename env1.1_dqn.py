@@ -1,10 +1,6 @@
 import time
-from tqdm import tqdm
 import numpy as np
 import h5py
-import json
-
-from action_selection import eps_greedy
 from network import Network
 from agent_dqn import Agent
 from tqdm import tqdm
@@ -14,12 +10,8 @@ import random
 import matplotlib
 import matplotlib.pyplot as plt
 from collections import namedtuple, deque
-from itertools import count
-
+from gridworld_multi_agent1_1 import training_animate
 import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
 
 # set up matplotlib
 is_ipython = 'inline' in matplotlib.get_backend()
@@ -31,11 +23,10 @@ plt.ion()
 # if GPU is to be used
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
-    NUM_EPISODES = 600
+    NUM_EPISODES = 300
 else:
-    NUM_EPISODES = 50
-# NUM_EPISODES = 100000
-NUM_STEPS = 1000
+    NUM_EPISODES = 300
+NUM_STEPS = 3000
 NUM_RUNS = 100
 multi_runs = False
 # actions
@@ -46,33 +37,16 @@ LEFT = 3
 actions = [FORWARD, BACKWARD, RIGHT, LEFT]
 num_acts = len(actions)
 
-# Environment dimensions
-NUM_ROWS = 16
-NUM_COLS = 16
-row_lim = NUM_ROWS - 1
-col_lim = NUM_COLS - 1
 
 #                          r1  r2  r3  r4
 adj_mat_prior = np.array([[1,  0],
                           [0,  1]], dtype=float)
-exp_name = '2RS_100000episodes_'
-NUM_VICTIMS = 10
-# make the map from json file
-# with open('data10.json') as f:
-#     data = json.load(f)
-#     test = data['map'][0]
-#     dim = data['dimensions']
-#     rows = dim[0]['rows']
-#     columns = dim[0]['columns']
-#
-#     env_map = np.zeros((rows, columns))
-#
-#     for cell in data['map']:
-#         if cell['isWall'] == 'true':
-#             env_map[cell['x'], cell['y']] = 1
 
-env_mat = np.zeros((NUM_ROWS, NUM_COLS))
+exp_name = f'{len(adj_mat_prior)}R_{NUM_EPISODES}episodes_dqn'
+NUM_VICTIMS = 10
+
 global env_map
+global env_mat
 env_map = np.array([[0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0],
                     [0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0],
                     [0, 0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0],
@@ -89,8 +63,18 @@ env_map = np.array([[0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0],
                     [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                     [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1],
                     [1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
-# env_map=np.zeros_like(env_map)
-
+# env_map = np.zeros((10, 10))
+# env_map = np.array([[0, 0, 1, 0, 0],
+#                     [0, 0, 0, 0, 0],
+#                     [1, 0, 1, 0, 1],
+#                     [0, 0, 0, 0, 0],
+#                     [0, 0, 1, 0, 0]])
+# Environment dimensions
+NUM_ROWS, NUM_COLS = np.shape(env_map)
+row_lim = NUM_ROWS - 1
+col_lim = NUM_COLS - 1
+env_mat = np.zeros_like(env_map, dtype=float)
+env_mat = np.pad(env_mat, 1, mode='constant', constant_values=np.nan)
 Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward'))
 
@@ -123,7 +107,8 @@ EPS_START = 0.9
 EPS_END = 0.05
 EPS_DECAY = 1000
 TAU = 0.005
-LR = 1e-4
+LR = 1e-3
+
 
 # Transition function (avoid walls)
 def movement(pos, old_poses, next_poses, action, speed):
@@ -149,6 +134,18 @@ def movement(pos, old_poses, next_poses, action, speed):
     else:
         return pos
 
+
+# def reward_func_ql(sensation_prime, dist2home, busy):
+#     perceived = (sensation_prime[0] == 0 and sensation_prime[1] == 0)
+#     saved = (dist2home[0] == 0 and dist2home[1] == 0)
+#     if perceived and not busy and not saved:
+#         re = 1
+#     elif saved and busy:
+#         re = 1
+#     else:
+#         re = -.1
+#
+#     return re
 def reward_func_ql(sensation_prime, dist2home, busy):
     perceived = (sensation_prime[0] == 0 and sensation_prime[1] == 0)
     saved = (dist2home[0] == 0 and dist2home[1] == 0)
@@ -160,40 +157,20 @@ def reward_func_ql(sensation_prime, dist2home, busy):
         re = -.1
     return re
 
-def q_learning(q, old_idx, curr_idx, re, act, alpha=0.8, gamma=0.9):
-    q[old_idx, act] += alpha * (re + gamma * np.max(q[curr_idx, :]) - q[old_idx, act])
-    return q
+# Function to print gradients
 
-global steps_done
-steps_done = 0
-
-# def select_action(agent, state):
-#     global steps_done
-#     state = torch.tensor(state, device=device)
-#     sample = random.random()
-#     eps_threshold = EPS_END + (EPS_START - EPS_END) * \
-#                     math.exp(-1. * steps_done / EPS_DECAY)
-#     steps_done += 1
-#     if sample > eps_threshold:
-#         with torch.no_grad():
-#             # t.max(1) will return the largest column value of each row.
-#             # second column on max result is index of where max element was
-#             # found, so we pick action with the larger expected reward.
-#             return agent.policy_net(torch.DoubleTensor(state)).max().view(1, 1)
-#     else:
-#         idx = np.random.randint(num_acts)
-#         return torch.tensor([[actions[idx]]], device=device, dtype=torch.long)
-
-
-def select_action(state, epsilon, num_actions, model):
-
-    if random.random() < epsilon:
-        idx = random.randint(0, num_actions - 1)
-        return torch.tensor([[actions[idx]]], device=device, dtype=torch.long)
-    else:
+def select_action(state, agent, num_actions, steps_done):
+    sample = random.random()
+    eps_threshold = EPS_END + (EPS_START - EPS_END) * \
+        math.exp(-1. * steps_done / EPS_DECAY)
+    if sample > eps_threshold:
         with torch.no_grad():
-            return model(torch.FloatTensor(state)).argmax().item()
-
+            # t.max(1) will return the largest column value of each row.
+            # second column on max result is index of where max element was
+            # found, so we pick action with the larger expected reward.
+            return torch.tensor([[agent.policy_net(state).argmax()]], device=device, dtype=torch.long)
+    else:
+        return torch.tensor([[random.randint(0, num_actions - 1)]], device=device, dtype=torch.long)
 
 episode_durations = []
 
@@ -215,7 +192,7 @@ def plot_durations(show_result=False):
         means = torch.cat((torch.zeros(99), means))
         plt.plot(means.numpy())
 
-    plt.pause(0.001)  # pause a bit so that plots are updated
+    plt.pause(0.00001)  # pause a bit so that plots are updated
     if is_ipython:
         if not show_result:
             display.display(plt.gcf())
@@ -223,27 +200,20 @@ def plot_durations(show_result=False):
         else:
             display.display(plt.gcf())
 
+
 def env(accuracy=1e-15):
-    global adj_mat_prior
+    print(f'Training started with {"gpu" if device.type=="cuda" else "cpu"}')
+    global adj_mat_prior, env_mat
     # Define the Network and the agent objects
     network = Network
     agent = Agent
 
-    epsilon_start = 1.0  # starting value of epsilon
-    epsilon_end = 0.01   # minimum value of epsilon
-    epsilon_decay = 0.995  # decay multiplier for epsilon
-
-    # Define the rescue team
-    r1 = agent(0, 'r', 3, NUM_ROWS, 1, [0, 7],
-               num_acts, NUM_ROWS, NUM_COLS, LR)
-    r2 = agent(1, 'r', 3, NUM_ROWS, 1, [0, 8],
-               num_acts, NUM_ROWS, NUM_COLS, LR)
-    r3 = agent(1, 'r', 3, NUM_ROWS, 1, [15, 7],
-               num_acts, NUM_ROWS, NUM_COLS, LR)
-    r4 = agent(3, 'r', 3, NUM_ROWS, 1, [15, 8],
-               num_acts, NUM_ROWS, NUM_COLS, LR)
+    r0 = agent(0, 'r', 3, NUM_ROWS, 1, [0, 7], num_acts, NUM_ROWS, NUM_COLS, LR)
+    # r1 = agent(1, 'r', 3, NUM_ROWS, 1, [0, 8], num_acts, NUM_ROWS, NUM_COLS, LR)
+    # r2 = agent(2, 'r', 3, NUM_ROWS, 1, [15, 7], num_acts, NUM_ROWS, NUM_COLS, LR)
+    r3 = agent(1, 'r', 3, NUM_ROWS, 1, [15, 8], num_acts, NUM_ROWS, NUM_COLS, LR)
     # List of rescue team members
-    rescue_team = [r1, r3]
+    rescue_team = [r0, r3]
 
     # Define the victims
     victim_locs = np.argwhere(env_map == 0).tolist()  # list of non-occupied locations in the map
@@ -255,17 +225,6 @@ def env(accuracy=1e-15):
         loc = victim_locs[np.random.randint(len(victim_locs))]  # find a random non-occupied location
         victims.append(agent(victim_id, 'v', 0, 0, 1, loc, num_acts, NUM_ROWS, NUM_COLS, LR))  # initialize the victim
         victim_locs.remove(loc)  # remove the location of the previous victim from the list
-    # v0 = agent(0, 'v', 0, 0, 1, [15, 7], num_acts, NUM_ROWS, NUM_COLS)
-    # v1 = agent(1, 'v', 0, 0, 1, [15, 12], num_acts, NUM_ROWS, NUM_COLS)
-    # v2 = agent(2, 'v', 0, 0, 1, [5, 5], num_acts, NUM_ROWS, NUM_COLS)
-    # v3 = agent(3, 'v', 0, 0, 1, [11, 3], num_acts, NUM_ROWS, NUM_COLS)
-    # v4 = agent(4, 'v', 0, 0, 1, [0, 1], num_acts, NUM_ROWS, NUM_COLS)
-    # v5 = agent(5, 'v', 0, 0, 1, [14, 6], num_acts, NUM_ROWS, NUM_COLS)
-    # v6 = agent(6, 'v', 0, 0, 1, [14, 7], num_acts, NUM_ROWS, NUM_COLS)
-    # v7 = agent(7, 'v', 0, 0, 1, [3, 15], num_acts, NUM_ROWS, NUM_COLS)
-    # v8 = agent(8, 'v', 0, 0, 1, [10, 15], num_acts, NUM_ROWS, NUM_COLS)
-    # v9 = agent(9, 'v', 0, 0, 1, [0, 12], num_acts, NUM_ROWS, NUM_COLS)
-    # victims = [v0, v1, v2, v3, v4, v5, v6, v7, v8, v9]
     vfd_list = []  # make a list of the rescue team visual fields depths
     rescue_team_roles = []  # make a list of the rescue team roles
     muster_site = []  # make a list of the muster sites
@@ -276,11 +235,10 @@ def env(accuracy=1e-15):
         muster_site.append(member.init_pos)
         if member.role == 's':
             num_just_scouts += 1
-    # eps = -1
     tic = time.time()
+    # animate = training_animate(len(rescue_team), len(victims), Col_num=NUM_COLS, Row_num=NUM_ROWS)
     # while True:
     for eps in tqdm(range(NUM_EPISODES)):
-        epsilon = epsilon_start
         rescue_team_hist = rescue_team.copy()
         victims_hist = victims.copy()
         adj_mat = adj_mat_prior.copy()
@@ -303,8 +261,9 @@ def env(accuracy=1e-15):
             victim.reset()
 
         t_step = 0
-        # for _ in range(NUM_STEPS):
-        while True:
+        test = []
+        for _ in range(NUM_STEPS):
+        # while True:
             num_rescue_team = len(rescue_team_hist)
             num_victims = len(victims_hist)
 
@@ -334,9 +293,6 @@ def env(accuracy=1e-15):
                 # vfd status for the team
                 team_vfd_status.append(member.vfd_status)
 
-                # History of Q
-                # member.q_hist = member.q.copy()
-
             rescue_team_vfd_list = np.asarray(rescue_team_vfd_list)
 
             # Keep track of the victims positions
@@ -344,7 +300,8 @@ def env(accuracy=1e-15):
             victims_old_pos_list = []
             for victim in victims_hist:
                 victim.traj.append(victim.old_pos)
-                victims_old_pos_list.append(victim.old_pos)
+                if victim.savior is None:
+                    victims_old_pos_list.append(victim.old_pos)
             victims_old_pos_list = np.asarray(victims_old_pos_list)
 
             # Make a list of the agents old positions
@@ -374,16 +331,12 @@ def env(accuracy=1e-15):
                                                              old_scouts2rescuers, net.adj_mat, adj_mat)
                 # Calculation of the indices for the rescue team
                 member.old_index = member.sensation2index(member.old_sensation, member.old_dist2home)
-                # member.old_index = torch.tensor(member.old_index, dtype=torch.float32, device=device).unsqueeze(0)
                 member.old_state_vect = np.zeros((member.num_observations,))
                 member.old_state_vect[member.old_index] = 1
-                # # actions for the rescue team
-                # if eps < NUM_EPISODES:
-                epsilon = max(epsilon_end, epsilon_decay * epsilon)  # update epsilon
-                member.action = select_action(member.old_state_vect, epsilon, member.num_actions, member.policy_net)  # select an action
-                # member.action = select_action(member, member.old_state_vect)#eps_greedy(member.q[member.old_index, :], num_acts, epsilon=.05)
-                # else:
-                #     member.action = eps_greedy(member.q[member.old_index, :], num_acts, epsilon=0.0)
+                member.old_state_vect = torch.tensor(member.old_state_vect,
+                                                     dtype=torch.float32, device=device).unsqueeze(0)
+                # actions for the rescue team
+                member.action = select_action(member.old_state_vect, member, member.num_actions, t_step)
                 # List of the current positions for the rescue team members
                 rescue_team_curr_pos_list.append(member.curr_pos)
 
@@ -396,14 +349,21 @@ def env(accuracy=1e-15):
             rescue_team_curr_dist2home_list = []
             for member in rescue_team_hist:
                 # Next positions for the rescue team
-                member.curr_pos = movement(member.old_pos, rescue_team_old_pos_list, rescue_team_curr_pos_list, member.action, member.speed)
+                member.curr_pos = movement(member.old_pos, rescue_team_old_pos_list, rescue_team_curr_pos_list,
+                                           member.action, member.speed)
 
-                # Search algorithm
-                # member.straight_move(member.old_index, member.were_here, env_map, member.busy)
-                member.random_walk(member.old_index, member.old_pos, member.speed, env_map, member.busy)
-                # member.ant_colony_move(env_mat, member.old_index, env_map, member.busy)
-                # member.levy_walk(env_map, member.busy)
+            # Search algorithm
+            # env_mat = r0.ant_colony(env_mat, r0.old_index, env_map, r0.busy, break_ties=False)
+            # r1.random_walk(r1.old_index, r1.old_pos, r1.speed, env_map, r1.busy, device)
+            # env_mat = r2.ant_colony(env_mat, r2.old_index, env_map, r2.busy, break_ties=True)
+            # r3.straight_move(r3.old_index, r3.were_here, env_map, r3.busy)
 
+            env_mat = r0.ant_colony(env_mat, r0.old_index, env_map, r0.busy, break_ties=True)
+            # env_mat = r1.ant_colony(env_mat, r1.old_index, env_map, r1.busy, break_ties=True)
+            # env_mat = r2.ant_colony(env_mat, r2.old_index, env_map, r2.busy, break_ties=True)
+            env_mat = r3.ant_colony(env_mat, r3.old_index, env_map, r3.busy, break_ties=True)
+
+            for member in rescue_team_hist:
                 member.update_dist2home()
                 rescue_team_curr_dist2home_list.append(member.curr_dist2home)
             # Calculation of the distance between agents (after their movement)
@@ -423,18 +383,17 @@ def env(accuracy=1e-15):
 
                 # Calculation of the indices for the rescue team (after their movement)
                 member.curr_index = member.sensation2index(member.curr_sensation, member.curr_dist2home)
-                # member.curr_index = torch.tensor(member.curr_index, dtype=torch.float32, device=device).unsqueeze(0)
                 member.curr_state_vect = np.zeros((member.num_observations,))
                 member.curr_state_vect[member.curr_index] = 1
+                member.curr_state_vect = torch.tensor(member.curr_state_vect,
+                                                      dtype=torch.float32, device=device).unsqueeze(0)
                 # Rewarding the rescue team
                 member.reward = reward_func_ql(member.curr_sensation, member.curr_dist2home, member.busy)
                 member.reward = torch.tensor([member.reward], device=device)
-                # q learning for agents in the rescue team
-                # member.q = q_learning(member.q, member.old_index, member.curr_index, member.reward, member.action, alpha=0.8)
+
                 if curr_seen_victim != None:
                     seen_victim.append(curr_seen_victim)
-                rescue_team_hist, adj_mat = member.rescue_started(rescue_team_hist, member, adj_mat)
-                adj_mat = member.rescue_accomplished(adj_mat, adj_mat_prior)
+
                 # Check to see if the team rescued any victim
                 for victim in victims_hist:
                     # Check to see if the victim rescued by the team
@@ -450,9 +409,11 @@ def env(accuracy=1e-15):
                         if victim.saved and victim.first:
                             victim.steps.append(t_step)
                             victim.first = False
-                            # break  # Rescue more than one victim by an agent
+                rescue_team_hist, adj_mat = member.rescue_started(rescue_team_hist, member, adj_mat)
+                adj_mat = member.rescue_accomplished(adj_mat, adj_mat_prior)
                 # Keeping track of the rewards
                 member.rew_hist.append(member.reward)
+
                 if member.perceived:
                     member.rew_hist_seen.append(member.reward)
                 if member.busy and member.first:
@@ -462,14 +423,15 @@ def env(accuracy=1e-15):
                     member.rew_sum_seen.append(torch.sum(torch.tensor(member.rew_hist_seen, device=device)).item())
                     member.first = False
                     rescue_team[member.id] = member
-
-            if len(victims_hist) == 0 or t_step==3000:
+            # test.append(torch.sum(torch.tensor(rescue_team_hist[0].rew_hist, device=device)).item())
+            # plt.plot(test, color='b')
+            # plt.pause(.0001)
+            if len(victims_hist) == 0:
                 episode_durations.append(t_step + 1)
-                plot_durations()
+                # plot_durations()
                 # print(f'In episode {eps+1}, all of the victims were rescued in {t_step} steps')
                 break
-
-            # Update the rescue team positions
+            # Update the rescue team positions, store the transitions in memory, perform one step of optimization
             for member in rescue_team_hist:
                 member.old_pos = member.curr_pos
                 # Store the transition in memory
@@ -482,24 +444,36 @@ def env(accuracy=1e-15):
                 target_net_state_dict = member.target_net.state_dict()
                 policy_net_state_dict = member.policy_net.state_dict()
                 for key in policy_net_state_dict:
-                    target_net_state_dict[key] = policy_net_state_dict[key] * TAU + target_net_state_dict[key] * (1 - TAU)
+                    target_net_state_dict[key] = policy_net_state_dict[key]*TAU + target_net_state_dict[key] * (1-TAU)
                 member.target_net.load_state_dict(target_net_state_dict)
-
+            # plt.plot(rescue_team_hist[0].loss, color='b')
+            # plt.pause(.00001)
             victims_curr_pos_list = []
             # Victims' actions and positions
             for victim in victims_hist:
                 # actions for the victims
                 victim.action = np.random.choice(actions)
                 # Victims next positions
-                victims_curr_pos_list.append(victim.curr_pos)
+                if victim.savior is None:
+                    victims_curr_pos_list.append(victim.curr_pos)
+                    victim.curr_pos = movement(victim.old_pos, victims_old_pos_list,
+                                               np.asarray(victims_curr_pos_list), victim.action, victim.speed)
                 if (victim.savior is not None) and (not victim.saved):
                     victim.old_pos = rescue_team_hist[victim.savior].curr_pos
                 elif victim.id not in seen_victim:
                     # Update the victims position
                     victim.old_pos = victim.curr_pos
-            victims_curr_pos_list = np.asarray(victims_curr_pos_list)
-            for victim in victims_hist:
-                victim.curr_pos = movement(victim.old_pos, victims_old_pos_list, victims_curr_pos_list, victim.action, victim.speed)
+
+
+            # animate.animate([[member.old_pos] for member in rescue_team], [[victim.old_pos] for victim in victims],
+            #                  [member.visual_field for member in rescue_team],
+            #                  [member.vfd_status for member in rescue_team],
+            #                  [member.role for member in rescue_team],
+            #                  [member.curr_sensation for member in rescue_team],
+            #                  [np.round(member.reward.item(), decimals=2) for member in rescue_team],
+            #                  ['S' if member.curr_index == member.last_index else 'R' for member in rescue_team],
+            #                  env_map, wait_time=0.1)
+            # print([member.role for member in rescue_team])
     # Add agents last pos in the trajectory
     for member in rescue_team:
         for victim in victims:
@@ -514,6 +488,8 @@ def env(accuracy=1e-15):
     rescue_team_rew_sum_seen = []
     rescue_team_steps_seen = []
     rescue_team_q = []
+    rescue_team_policy_nets = []
+    rescue_team_target_nets = []
     largest = len(rescue_team[0].traj)
     for member in rescue_team:
         if len(member.traj) > largest:
@@ -523,6 +499,8 @@ def env(accuracy=1e-15):
         rescue_team_rew_sum_seen.append(member.rew_sum_seen)
         rescue_team_steps_seen.append(member.steps_seen)
         rescue_team_q.append(member.q)
+        rescue_team_policy_nets.append(member.policy_net.state_dict())
+        rescue_team_target_nets.append(member.target_net.state_dict())
     for member in rescue_team:
         while len(member.traj) < largest:
             member.traj.append(member.traj[-1])
@@ -539,7 +517,7 @@ def env(accuracy=1e-15):
     print(f'This experiment took {time.time() - tic} seconds')
     return (rescue_team_traj,
             rescue_team_rew_sum, rescue_team_steps,
-            rescue_team_rew_sum_seen, rescue_team_steps_seen,
+            rescue_team_rew_sum_seen, rescue_team_steps_seen, rescue_team_policy_nets, rescue_team_target_nets,
             rescue_team_q, victims_traj, vfd_list, vfd_status_list, rescue_team_roles)
 
 
@@ -553,7 +531,7 @@ if multi_runs:
         print(f'Run {run + 1} of {NUM_RUNS}')
         (rescue_team_traj,
          rescue_team_rew_sum, rescue_team_steps,
-         rescue_team_rew_sum_seen, rescue_team_steps_seen,
+         rescue_team_rew_sum_seen, rescue_team_steps_seen, rescue_team_policy_nets, rescue_team_target_nets,
          rescue_team_q, victims_traj, vfd_list, vfd_status_list, rescue_team_roles) = env(accuracy=1e-7)
 
         rescue_team_rew_sum_run.append(list(filter(None, rescue_team_rew_sum)))
@@ -566,7 +544,7 @@ if multi_runs:
     rescue_team_rew_sum_seen_run = np.mean(np.asarray(rescue_team_rew_sum_seen_run), axis=0)
     rescue_team_steps_seen_run = np.mean(np.asarray(rescue_team_steps_seen_run), axis=0)
 
-    with h5py.File(f'multi_agent_Q_learning_{exp_name}_{str(NUM_RUNS)}Runs.hdf5', 'w') as f:
+    with h5py.File(f'{exp_name}_{str(NUM_RUNS)}Runs.hdf5', 'w') as f:
         for idx, rew_sum in enumerate(rescue_team_rew_sum_run):
             f.create_dataset(f'RS{idx}_reward', data=rew_sum)
         for idx, steps in enumerate(rescue_team_steps_run):
@@ -578,29 +556,47 @@ if multi_runs:
         f.create_dataset('RS_VFD', data=vfd_list)
 
 else:
-    # Single Run
-    (rescue_team_traj,
-     rescue_team_rew_sum, rescue_team_steps,
-     rescue_team_rew_sum_seen, rescue_team_steps_seen,
-     rescue_team_q, victims_traj, vfd_list, vfd_status_list, rescue_team_roles) = env(accuracy=1e-7)
 
-    with h5py.File(f'multi_agent_Q_learning_{exp_name}.hdf5', 'w') as f:
-        for idx, traj in enumerate(rescue_team_traj):
-            f.create_dataset(f'RS{idx}_trajectory', data=traj)
-        for idx, vfd_sts in enumerate(vfd_status_list):
-            f.create_dataset(f'RS{idx}_VFD_status', data=vfd_sts)
-        for idx, rew_sum in enumerate(rescue_team_rew_sum):
-            f.create_dataset(f'RS{idx}_reward', data=rew_sum)
-        for idx, steps in enumerate(rescue_team_steps):
-            f.create_dataset(f'RS{idx}_steps', data=steps)
-        for idx, rew_sum_seen in enumerate(rescue_team_rew_sum_seen):
-            f.create_dataset(f'RS{idx}_reward_seen', data=rew_sum_seen)
-        for idx, steps_seen in enumerate(rescue_team_steps_seen):
-            f.create_dataset(f'RS{idx}_steps_seen', data=steps_seen)
-        for idx, q in enumerate(rescue_team_q):
-            f.create_dataset(f'RS{idx}_Q', data=q)
-        for idx, victim_traj in enumerate(victims_traj):
-            f.create_dataset(f'victim{idx}_trajectory', data=victim_traj)
-        f.create_dataset('victims_num', data=[len(victims_traj)])
-        f.create_dataset('RS_VFD', data=vfd_list)
-        f.create_dataset('RS_ROLES', data=rescue_team_roles)
+    for numrun in range(NUM_RUNS):
+        # Single Run
+        (rescue_team_traj,
+         rescue_team_rew_sum, rescue_team_steps,
+         rescue_team_rew_sum_seen, rescue_team_steps_seen, rescue_team_policy_nets, rescue_team_target_nets,
+         rescue_team_q, victims_traj, vfd_list, vfd_status_list, rescue_team_roles) = env(accuracy=1e-7)
+
+        with h5py.File(f'{exp_name}_{numrun}.hdf5', 'w') as f:
+            f.create_dataset(f'RS0_reward', data=rescue_team_rew_sum[0])
+            f.create_dataset(f'RS0_steps', data=rescue_team_rew_sum_seen[0])
+            f.create_dataset(f'RS0_reward_seen', data=rescue_team_steps[0])
+            f.create_dataset(f'RS0_steps_seen', data=rescue_team_steps_seen[0])
+
+            f.create_dataset(f'RS1_reward', data=rescue_team_rew_sum[1])
+            f.create_dataset(f'RS1_steps', data=rescue_team_rew_sum_seen[1])
+            f.create_dataset(f'RS1_reward_seen', data=rescue_team_steps[1])
+            f.create_dataset(f'RS1_steps_seen', data=rescue_team_steps_seen[1])
+
+    # with h5py.File(f'{exp_name}.hdf5', 'w') as f:
+    #     for idx, traj in enumerate(rescue_team_traj):
+    #         f.create_dataset(f'RS{idx}_trajectory', data=traj)
+    #     for idx, vfd_sts in enumerate(vfd_status_list):
+    #         f.create_dataset(f'RS{idx}_VFD_status', data=vfd_sts)
+    #     for idx, rew_sum in enumerate(rescue_team_rew_sum):
+    #         f.create_dataset(f'RS{idx}_reward', data=rew_sum)
+    #     for idx, steps in enumerate(rescue_team_steps):
+    #         f.create_dataset(f'RS{idx}_steps', data=steps)
+    #     for idx, rew_sum_seen in enumerate(rescue_team_rew_sum_seen):
+    #         f.create_dataset(f'RS{idx}_reward_seen', data=rew_sum_seen)
+    #     for idx, steps_seen in enumerate(rescue_team_steps_seen):
+    #         f.create_dataset(f'RS{idx}_steps_seen', data=steps_seen)
+    #     for idx, q in enumerate(rescue_team_q):
+    #         f.create_dataset(f'RS{idx}_Q', data=q)
+    #     for idx, victim_traj in enumerate(victims_traj):
+    #         f.create_dataset(f'victim{idx}_trajectory', data=victim_traj)
+    #     f.create_dataset('victims_num', data=[len(victims_traj)])
+    #     f.create_dataset('RS_VFD', data=vfd_list)
+    #     f.create_dataset('RS_ROLES', data=rescue_team_roles)
+    #
+    # for idx, pnet in enumerate(rescue_team_policy_nets):
+    #     torch.save(pnet, f'{exp_name}_RS{idx}_policy_net.pt')
+    # for idx, tnet in enumerate(rescue_team_target_nets):
+    #     torch.save(tnet, f'{exp_name}_RS{idx}_target_net.pt')

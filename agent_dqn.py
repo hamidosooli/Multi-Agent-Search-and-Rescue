@@ -1,5 +1,7 @@
 import numpy as np
 from search_algorithms import SearchAlgorithms
+
+import matplotlib.pyplot as plt
 import math
 import random
 from collections import namedtuple, deque
@@ -32,9 +34,9 @@ class DQN(nn.Module):
 
     def __init__(self, n_observations, n_actions):
         super(DQN, self).__init__()
-        self.layer1 = nn.Linear(n_observations, 128)
-        self.layer2 = nn.Linear(128, 128)
-        self.layer3 = nn.Linear(128, n_actions)
+        self.layer1 = nn.Linear(n_observations, 512)
+        self.layer2 = nn.Linear(512, 512)
+        self.layer3 = nn.Linear(512, n_actions)
 
     # Called with either one element to determine next action, or a batch
     # during optimization. Returns tensor([[left0exp,right0exp]...]).
@@ -42,7 +44,6 @@ class DQN(nn.Module):
         x = F.relu(self.layer1(x))
         x = F.relu(self.layer2(x))
         return self.layer3(x)
-
 
 class Agent(SearchAlgorithms):
     def __init__(self, agent_id, init_role, vfd, max_vfd, speed, init_pos, num_actions, num_rows, num_cols, LR):
@@ -55,7 +56,7 @@ class Agent(SearchAlgorithms):
         self.vfd_status = np.ones((2 * self.visual_field + 1, 2 * self.visual_field + 1), dtype=bool)
         self.savior = None
         self.curr_sensation = [np.nan, np.nan]
-        self.old_sensation = self.curr_sensation
+        self.old_sensation = self.curr_sensation.copy()
 
         self.curr_dist2home = [0, 0]
         self.old_dist2home = self.curr_dist2home
@@ -74,8 +75,8 @@ class Agent(SearchAlgorithms):
         self.speed = speed  # is the number of cells the agent can move in one time-step
 
         self.init_pos = init_pos
-        self.curr_pos = self.init_pos
-        self.old_pos = self.curr_pos
+        self.curr_pos = self.init_pos.copy()
+        self.old_pos = self.curr_pos.copy()
 
         self.traj = []  # Trajectory of the agent locations
         self.vfd_status_history = []
@@ -99,16 +100,16 @@ class Agent(SearchAlgorithms):
         self.old_state_vect = np.zeros((self.num_observations,))
         self.curr_state_vect = np.zeros((self.num_observations,))
         self.q = np.zeros((self.num_observations, self.num_actions))  # q table for q-learning
-        self.q_hist = self.q
+        self.q_hist = self.q.copy()
         self.policy_net = DQN(self.num_observations, self.num_actions).to(device)
         self.target_net = DQN(self.num_observations, self.num_actions).to(device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.optimizer = optim.AdamW(self.policy_net.parameters(), lr=LR, amsgrad=True)
         self.memory = ReplayMemory(10000)
-
+        self.loss = []
     def reset(self):
-        self.old_pos = self.init_pos
-        self.curr_pos = self.init_pos
+        self.old_pos = self.init_pos.copy()
+        self.curr_pos = self.init_pos.copy()
         self.role = self.init_role
         self.old_sensation = [np.nan, np.nan]
         self.curr_sensation = [np.nan, np.nan]
@@ -133,6 +134,12 @@ class Agent(SearchAlgorithms):
         self.competency = 1.0
         self.vfd_status = np.ones((2 * self.visual_field + 1, 2 * self.visual_field + 1), dtype=bool)
 
+    def print_gradients(self, module):
+        for name, param in module.named_parameters():
+            if param.grad is not None:
+                plt.plot(param.grad)
+                plt.pause()
+                # print(f"Layer: {name}, Gradients: {param.grad}")
     def optimize_model(self, BATCH_SIZE=128, GAMMA=0.99):
         if len(self.memory) < BATCH_SIZE:
             return
@@ -159,22 +166,23 @@ class Agent(SearchAlgorithms):
 
         # Compute V(s_{t+1}) for all next states.
         # Expected values of actions for non_final_next_states are computed based
-        # on the "older" target_net; selecting their best reward with max(1)[0].
+        # on the "older" target_net; selecting their best reward with max(1).values.
         # This is merged based on the mask, such that we'll have either the expected
         # state value or 0 in case the state was final.
         next_state_values = torch.zeros(BATCH_SIZE, device=device)
         with torch.no_grad():
-            next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0]
+            next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1).values
         # Compute the expected Q values
         expected_state_action_values = (next_state_values * GAMMA) + reward_batch
 
         # Compute Huber loss
         criterion = nn.SmoothL1Loss()
         loss = criterion(state_action_values, expected_state_action_values.unsqueeze(1))
-
+        self.loss.append(loss.item())
         # Optimize the model
         self.optimizer.zero_grad()
         loss.backward()
+        # self.print_gradients(self.policy_net)
         # In-place gradient clipping
         torch.nn.utils.clip_grad_value_(self.policy_net.parameters(), 100)
         self.optimizer.step()
@@ -267,9 +275,7 @@ class Agent(SearchAlgorithms):
                       (dist2home[1] + self.max_visual_field)))
         else:
             index = 2*((2 * self.max_visual_field + 1) ** 2)
-        #
-        # self.state_vect[int(index)] = 1
-        # self.state_vect = torch.tensor(self.state_vect, device=device)
+
         return int(index)
 
     def rescue_started(self, rescue_team_hist, agent, adj_mat):

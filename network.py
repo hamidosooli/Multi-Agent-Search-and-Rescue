@@ -20,7 +20,8 @@ class Network:
 
     def sensed_pos(self, victim_pos_list, rs_pos_list):
         self.num_victims = len(victim_pos_list)
-
+        if self.num_victims == 0:
+            return np.ones((self.num_agents, 1, 2)) * np.inf
         rs_pos_array = np.empty((self.num_agents, self.num_victims, 2))
         rs_pos_array[:, :, 0] = np.tile(rs_pos_list[:, 0].reshape(self.num_agents, 1), (1, self.num_victims))
         rs_pos_array[:, :, 1] = np.tile(rs_pos_list[:, 1].reshape(self.num_agents, 1), (1, self.num_victims))
@@ -33,7 +34,10 @@ class Network:
         return np.subtract(victim_pos_array, rs_pos_array)
 
     def is_seen(self, vfd_list, raw_sensation, vfd_status):
-        vfd_mat = np.tile(vfd_list.reshape(self.num_agents, 1), (1, self.num_victims))
+        if self.num_victims == 0:
+            vfd_mat = np.tile(vfd_list.reshape(self.num_agents, 1), (1, 1))
+        else:
+            vfd_mat = np.tile(vfd_list.reshape(self.num_agents, 1), (1, self.num_victims))
         in_vfd_condition = np.zeros_like(raw_sensation)
         in_vfd_condition[:, :, 0] = in_vfd_condition[:, :, 1] = vfd_mat
         tuple_cond = np.abs(raw_sensation) <= in_vfd_condition

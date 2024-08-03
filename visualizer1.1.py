@@ -19,10 +19,15 @@ env_map = np.array([[0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0],
                     [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1],
                     [1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
 # env_map=np.zeros_like(env_map)
+# env_map = np.array([[0, 0, 1, 0, 0],
+#                     [0, 0, 0, 0, 0],
+#                     [1, 0, 1, 0, 1],
+#                     [0, 0, 0, 0, 0],
+#                     [0, 0, 1, 0, 0]])
 # exp_name = '2RS_100000episodes_all2all'
 # exp_name = '2RS_10000episodes_empty'
-exp_name = '2RS_100000episodes_'
-# exp_name = '2R_100000episodes_quad'
+# exp_name = '4R_1episodes_dqn'
+exp_name = '2RS_100000episodes_dqn'
 # exp_name = '2R_NS'
 # exp_name = '2R_2S'
 # exp_name = '2R_2S_A2A'
@@ -34,7 +39,7 @@ exp_name = '2RS_100000episodes_'
 plt.rcParams.update({'font.size': 22})
 file_name = f'multi_agent_Q_learning_{exp_name}.hdf5'
 
-run_animate = False
+run_animate = True
 
 rescue_team_Traj = []
 rescue_team_VFD_status = []
@@ -67,7 +72,7 @@ with h5py.File(file_name, 'r') as f:
 
     plt.figure('reward')
     for idx in range(len(f['RS_VFD'])):
-        plt.plot(np.asarray(rescue_team_RewSum[idx]))  # [::3]
+        plt.plot(np.cumsum(np.asarray(rescue_team_RewSum[idx])))  # [::3]
         rescue_team_legends.append(f'Agent {idx+1}')
     plt.xlabel('Number of episodes')
     plt.ylabel('Rescue Team Total Rewards')
@@ -75,7 +80,7 @@ with h5py.File(file_name, 'r') as f:
 
     plt.figure('reward_seen')
     for idx in range(len(f['RS_VFD'])):
-        plt.plot(np.asarray(rescue_team_RewSum_seen[idx]))
+        plt.plot(np.cumsum(np.asarray(rescue_team_RewSum_seen[idx])))
     plt.xlabel('Number of Episodes')
     plt.ylabel('Rescue Team Rewards During Victim Visit')
     plt.legend(rescue_team_legends)
