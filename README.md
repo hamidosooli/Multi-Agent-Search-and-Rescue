@@ -10,7 +10,7 @@ Run visualizer1.1.py for demonstration of the trained agents
 
 ## Citation
 
-If you found this repository useful, we would really appreciate if you could cite my thesis:
+If you found this repository useful, I would really appreciate if you could cite my thesis:
 
 - [1] Hamid Osooli, (2024). "A Multi-Robot Task Assignment Framework for Search and Rescue with Heterogeneous Teams," University of Massachusetts Lowell, ProQuest Dissertations Publishing.
 
