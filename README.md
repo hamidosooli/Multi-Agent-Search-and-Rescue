@@ -5,4 +5,4 @@ Run env1.1.py for training
 
 Run visualizer1.1.py for demonstration of the trained agents
 
-![til](./My Movie 2.gif)
+![](https://github.com/hamidosooli/Multi-Agent-Search-and-Rescue/blob/main/My%20Movie%202.gif)
