@@ -13,7 +13,7 @@ If you found this repository useful, I would really appreciate if you could cite
 
 
 ```bibtex
-@book{osooli2024,
+@masterthesis{osooli2024,
   title={A Multi-Robot Task Assignment Framework for Search and Rescue with Heterogeneous Teams},
   author={Osooli, Hamid},
   year={2024},
